@@ -44,14 +44,14 @@ data:
         DUMP_BACKUP_FILE="redis-dump-$TIMESTAMP.tar.gz"
         DUMP_LATEST_FILE="redis-dump-latest.tar.gz"
       fi
-
+       
       if [ -f $REDIS_DUMP_FILE ]; then
       mc config host add myminio $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
-              echo "Backup frequency is $BACKUP_FREQUENCY"
-              mc cp $REDIS_DUMP_FILE myminio/wf-dev-db-backups/$BACKUP_FREQUENCY/$DUMP_BACKUP_FILE
               # Always save the latest dump file as redis-dump-latest.rdb or tar.gz
               mc cp $REDIS_DUMP_FILE myminio/wf-dev-db-backups/hourly/$DUMP_LATEST_FILE
               echo "$REDIS_DUMP_FILE found OK and copied to minio bucket."
+              echo "Backup frequency is $BACKUP_FREQUENCY"
+              mc cp $REDIS_DUMP_FILE myminio/wf-dev-db-backups/$BACKUP_FREQUENCY/$DUMP_BACKUP_FILE
 
       else
       echo "$REDIS_DUMP_FILE not found backup failed."
