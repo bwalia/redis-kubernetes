@@ -32,19 +32,21 @@ data:
       # mc --version
       source /tmp/secrets/.env
       # tar -czvf /tmp/redis-dump.tar.gz /redis-dump
-      if [ -f /redis-dump/dump.rdb ]; then
+      REDIS_DUMP_FILE="/redis-dump/dump.rdb"
+
+      if [ -f $REDIS_DUMP_FILE ]; then
       mc config host add myminio $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
       TIMESTAMP=$(date +%Y-%m-%d-%H-%M)
-      DUMP_FILE_TAR="redis-dump-$TIMESTAMP.rdb"
-            if [ "$BACKUP_FREQUENCY" == "before-redis-cluster-updated" ]; then
-              echo "Backup frequency is before-redis-cluster-updated"
-              mc cp /redis-dump/dump.rdb myminio/wf-dev-db-backups/before-redis-cluster-updated/$DUMP_FILE_TAR
+        DUMP_FILE_TAR="redis-dump-$TIMESTAMP.rdb"
+              echo "Backup frequency is $BACKUP_FREQUENCY"
+              mc cp $REDIS_DUMP_FILE myminio/wf-dev-db-backups/$BACKUP_FREQUENCY/$DUMP_FILE_TAR
+
               DUMP_FILE_TAR="redis-dump-latest.rdb"
-              mc cp /redis-dump/dump.rdb myminio/wf-dev-db-backups/$BACKUP_FREQUENCY/$
-              echo "/redis-dump/dump.rdb found OK and copied to minio bucket."
-            fi
+              mc cp $REDIS_DUMP_FILE myminio/wf-dev-db-backups/hourly/$DUMP_FILE_TAR
+              echo "$REDIS_DUMP_FILE found OK and copied to minio bucket."
+
       else
-      echo "/redis-dump/dump.rdb not found backup failed."
+      echo "$REDIS_DUMP_FILE not found backup failed."
       fi
 ---
 apiVersion: apps/v1
@@ -151,6 +153,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: wf-dev-db-backup-hourly
+  namespace: dev
 spec:
   schedule: "0 * * * *"
   #testing 1 min "0 */1 * * *"
@@ -180,6 +183,8 @@ spec:
             resources:
               null
             volumeMounts:
+              - name: redis-data-vol
+                mountPath: /redis-dump
               - name: wf-env-vol-dev
                 mountPath: "/tmp/secrets"
                 readOnly: false
@@ -187,16 +192,19 @@ spec:
                 mountPath: "/tmp/configmap"
                 readOnly: false
           volumes:
+            - name: redis-data-vol
+              persistentVolumeClaim:
+                claimName: redis-pvc
             - name: wf-env-vol-dev
               secret:
-                secretName: wf-secret-dev
+                secretName: wf-api-secret-dev
                 items:
                 - key: env_file
                   path: .env
                 optional: false
             - name: redis-bootstrap-cm-vol
               configMap:
-                name: wf-bootstrap-cm-openresty-dev
+                name: redis-bootstrap-cm-dev
       backoffLimit: 0
 ---
 # Source: wsl/templates/cronjob.yaml
@@ -204,6 +212,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: wf-dev-db-backup-daily
+  namespace: dev
 spec:
   schedule: "0 4 * * *"
   #testing 1 min "0 */1 * * *"
@@ -234,6 +243,8 @@ spec:
             resources:
               null
             volumeMounts:
+              - name: redis-data-vol
+                mountPath: /redis-dump
               - name: wf-env-vol-dev
                 mountPath: "/tmp/secrets"
                 readOnly: false
@@ -241,14 +252,17 @@ spec:
                 mountPath: "/tmp/configmap"
                 readOnly: false
           volumes:
+            - name: redis-data-vol
+              persistentVolumeClaim:
+                claimName: redis-pvc
             - name: wf-env-vol-dev
               secret:
-                secretName: wf-secret-dev
+                secretName: wf-api-secret-dev
                 items:
                 - key: env_file
                   path: .env
                 optional: false
             - name: redis-bootstrap-cm-vol
               configMap:
-                name: wf-bootstrap-cm-openresty-dev
+                name: redis-bootstrap-cm-dev
       backoffLimit: 0
