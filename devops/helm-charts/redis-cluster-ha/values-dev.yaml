@@ -3,6 +3,7 @@
 # Declare variables to be passed into your templates.
 
 redisClusterName: "redis-cluster"
+namespace: dev
 
 replicaCount: 1
 

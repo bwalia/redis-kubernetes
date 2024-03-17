@@ -3,26 +3,26 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "redis-cluster-ha.fullname" . }}
-  namespace: {{ Values.namespace }}
+  namespace: {{ .Values.namespace }}
   labels:
     {{- include "redis-cluster-ha.labels" . | nindent 4 }}
 spec:
-  serviceName: {{ Values.redisClusterName }}
+  serviceName: {{ .Values.redisClusterName }}
   replicas: 1
   selector:
     matchLabels:
-      app: redis-server
+      app: redis-sts
   updateStrategy:
     type: RollingUpdate
   template:
     metadata:
       labels:
-        app: redis-server
+        app: redis-sts
     spec:
       volumes:
         - name: redis-data-vol
           persistentVolumeClaim:
-            claimName: redis-pvc
+            claimName: redis-{{ .Values.namespace }}-pvc
         - name: redis-bootstrap-cm-vol
           configMap:
             name: redis-bootstrap-cm-dev

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: redis-sts
+  name: redis-{{ .Values.namespace }}-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  hostPath:
+    path: "/redis-cluster/data/{{ .Values.namespace }}"
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
