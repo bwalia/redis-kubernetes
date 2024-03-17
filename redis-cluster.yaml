@@ -1,14 +1,14 @@
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: redis-pvc
-  namespace: dev
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 2Gi
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: redis-pvc
+#   namespace: dev
+# spec:
+#   accessModes:
+#   - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 2Gi
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -16,8 +16,36 @@ metadata:
   name: redis-bootstrap-cm-dev
   namespace: dev
 data:
-    redis-dump.sh: |
+    backup-database.sh: |
+      #!/bin/bash
+      if [ -z "$BACKUP_FREQUENCY" ]; then
+        echo "BACKUP_FREQUENCY is not set"
+        BACKUP_FREQUENCY="hourly"
+      fi
       echo "Dumping redis data"
+      REDIS_CLI_BIN=$(which redis-cli)
+      if [ -z "$REDIS_CLI_BIN" ]; then
+            echo "redis-cli not found but we will continue with the backup without flushing the redis data"
+      else
+            echo save | $REDIS_CLI_BIN
+      fi
+      # mc --version
+      source /tmp/secrets/.env
+      # tar -czvf /tmp/redis-dump.tar.gz /redis-dump
+      if [ -f /redis-dump/dump.rdb ]; then
+      mc config host add myminio $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+      TIMESTAMP=$(date +%Y-%m-%d-%H-%M)
+      DUMP_FILE_TAR="redis-dump-$TIMESTAMP.rdb"
+            if [ "$BACKUP_FREQUENCY" == "before-redis-cluster-updated" ]; then
+              echo "Backup frequency is before-redis-cluster-updated"
+              mc cp /redis-dump/dump.rdb myminio/wf-dev-db-backups/before-redis-cluster-updated/$DUMP_FILE_TAR
+              DUMP_FILE_TAR="redis-dump-latest.rdb"
+              mc cp /redis-dump/dump.rdb myminio/wf-dev-db-backups/$BACKUP_FREQUENCY/$
+              echo "/redis-dump/dump.rdb found OK and copied to minio bucket."
+            fi
+      else
+      echo "/redis-dump/dump.rdb not found backup failed."
+      fi
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -37,11 +65,29 @@ spec:
       labels:
         app: redis-server
     spec:
+      volumes:
+        - name: redis-data-vol
+          persistentVolumeClaim:
+            claimName: redis-pvc
+        - name: redis-bootstrap-cm-vol
+          configMap:
+            name: redis-bootstrap-cm-dev
+        - name: wf-env-vol-dev
+          secret:
+            secretName: wf-api-secret-dev
+            items:
+            - key: env_file
+              path: .env
+
       initContainers:
       - name: redis-init
         image: busybox
-        command: ["sh", "-c", "echo $MY_POD_IP > /redis-dump/ip.txt; echo 'Wrote the Pod IP to ip.txt'"]
+        command: ["sh", "-c", "ls -la /redis-dump/"]
         env:
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: MY_POD_IP
           valueFrom:
             fieldRef:
@@ -49,28 +95,42 @@ spec:
         volumeMounts:
         - name: redis-data-vol
           mountPath: /redis-dump
+
       - name: redis-dump
-        image: busybox
-        command: ["sh", "-c", "echo 'Hello, World! Your Pod IP is: ' > /redis-dump/index.html; cat /redis-dump/ip.txt >> /redis-dump/index.html; echo 'Created index.html with the Pod IP'"]
+        image: minio/mc 
+        env:
+        - name: BACKUP_FREQUENCY
+          value: "before-redis-cluster-updated"
+        command: ["sh", "-c", "cp /tmp/configmap/backup-database.sh /usr/local/bin/backup-database.sh && chmod +x /usr/local/bin/backup-database.sh && bash /usr/local/bin/backup-database.sh"]
         volumeMounts:
         - name: redis-data-vol
           mountPath: /redis-dump
+        - name: redis-bootstrap-cm-vol
+          mountPath: /tmp/configmap
+        - name: wf-env-vol-dev
+          mountPath: /tmp/secrets
+
       containers:
       - name: redis-server
         image: bwalia/redis:latest
         volumeMounts:
         - name: redis-data-vol
           mountPath: /data
-      volumes:
-      - name: redis-data-vol
-        persistentVolumeClaim:
-          claimName: redis-pvc
-        # emptyDir: {}
-        # volumeMounts:
-        # - name: redis-data
-        #   mountPath: /data
-        # - name: redis-bootstrap-cm-vol
-        #   mountPath: /tmp/configmap
+      # Moved to cronjob    
+      # - name: redis-dump-sidecar
+      #   image: minio/mc 
+      #   env:
+      #   - name: BACKUP_FREQUENCY
+      #     value: "hourly"
+      #   command: ["sh", "-c", "cp /tmp/configmap/backup-database.sh /usr/local/bin/backup-database.sh && chmod +x /usr/local/bin/backup-database.sh && bash /usr/local/bin/backup-database.sh hourly"]
+      #   volumeMounts:
+      #   - name: redis-data-vol
+      #     mountPath: /redis-dump
+      #   - name: redis-bootstrap-cm-vol
+      #     mountPath: /tmp/configmap
+      #   - name: wf-env-vol-dev
+      #     mountPath: /tmp/secrets
+
 ---
 apiVersion: v1
 kind: Service
@@ -85,3 +145,110 @@ spec:
       port: 6379
       targetPort: 6379
   type: ClusterIP
+---
+# Source: wf/templates/cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wf-dev-db-backup-hourly
+spec:
+  schedule: "0 * * * *"
+  #testing 1 min "0 */1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: "wf-db-backup-dev-hourly"
+            image: bwalia/redis:latest
+            imagePullPolicy: Always
+            command:
+              - /bin/sh
+              - -c
+              - --
+            args:
+              - cp /tmp/configmap/backup-database.sh /usr/local/bin/backup-database.sh && chmod +x /usr/local/bin/backup-database.sh && bash /usr/local/bin/backup-database.sh
+              # sleep infinity
+            env:
+              - name: DB_BACKUP_JOB_NAME
+                value: wf-dev-db-backup-hourly
+              - name: BACKUP_FREQUENCY
+                value: hourly
+            envFrom:
+            resources:
+              null
+            volumeMounts:
+              - name: wf-env-vol-dev
+                mountPath: "/tmp/secrets"
+                readOnly: false
+              - name: redis-bootstrap-cm-vol
+                mountPath: "/tmp/configmap"
+                readOnly: false
+          volumes:
+            - name: wf-env-vol-dev
+              secret:
+                secretName: wf-secret-dev
+                items:
+                - key: env_file
+                  path: .env
+                optional: false
+            - name: redis-bootstrap-cm-vol
+              configMap:
+                name: wf-bootstrap-cm-openresty-dev
+      backoffLimit: 0
+---
+# Source: wsl/templates/cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wf-dev-db-backup-daily
+spec:
+  schedule: "0 4 * * *"
+  #testing 1 min "0 */1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: wf-db-backup-dev-daily
+            image: bwalia/redis:latest
+            imagePullPolicy: Always
+            command:
+              - /bin/sh
+              - -c
+              - --
+            args:
+              - cp /tmp/configmap/backup-database.sh /usr/local/bin/backup-database.sh && chmod +x /usr/local/bin/backup-database.sh && bash /usr/local/bin/backup-database.sh
+              # cp /tmp/configmap/backup-database.sh /usr/local/bin/backup-database.sh && chmod +x /usr/local/bin/backup-database.sh && bash /usr/local/bin/backup-database.sh
+              # sleep infinity
+            env:
+              - name: DB_BACKUP_JOB_NAME
+                value: wf-dev-db-backup-daily
+              - name: BACKUP_FREQUENCY
+                value: daily
+            envFrom:
+            resources:
+              null
+            volumeMounts:
+              - name: wf-env-vol-dev
+                mountPath: "/tmp/secrets"
+                readOnly: false
+              - name: redis-bootstrap-cm-vol
+                mountPath: "/tmp/configmap"
+                readOnly: false
+          volumes:
+            - name: wf-env-vol-dev
+              secret:
+                secretName: wf-secret-dev
+                items:
+                - key: env_file
+                  path: .env
+                optional: false
+            - name: redis-bootstrap-cm-vol
+              configMap:
+                name: wf-bootstrap-cm-openresty-dev
+      backoffLimit: 0
