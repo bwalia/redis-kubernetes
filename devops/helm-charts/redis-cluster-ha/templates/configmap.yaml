@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-bootstrap-cm-dev
+  namespace: dev
+data:
+    backup-database.sh: |
+      #!/bin/bash
+      TIMESTAMP=$(date +%Y-%m-%d-%H-%M)
+      if [ -z "$BACKUP_FREQUENCY" ]; then
+        echo "BACKUP_FREQUENCY is not set"
+        BACKUP_FREQUENCY="hourly"
+      fi
+      echo "Dumping redis data"
+      REDIS_CLI_BIN=$(which redis-cli)
+      if [ -z "$REDIS_CLI_BIN" ]; then
+            echo "redis-cli not found but we will continue with the backup without flushing the redis data"
+      else
+            echo save | $REDIS_CLI_BIN
+      fi
+      # mc --version
+      source /tmp/secrets/.env
+      TAR_UTIL_BIN=$(which tar)
+      if [ -z "$TAR_UTIL_BIN" ]; then
+            echo "tar util not found but we will continue with the backup without compressing the redis data"
+        REDIS_DUMP_FILE="/redis-dump/dump.rdb"
+        DUMP_BACKUP_FILE="redis-dump-$TIMESTAMP.rdb"
+        DUMP_LATEST_FILE="redis-dump-latest.rdb"
+      else
+      tar -czvf /tmp/redis-dump.tar.gz /redis-dump
+        REDIS_DUMP_FILE="/tmp/redis-dump.tar.gz"
+        DUMP_BACKUP_FILE="redis-dump-$TIMESTAMP.tar.gz"
+        DUMP_LATEST_FILE="redis-dump-latest.tar.gz"
+      fi
+       
+      if [ -f $REDIS_DUMP_FILE ]; then
+      mc config host add myminio $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+              # Always save the latest dump file as redis-dump-latest.rdb or tar.gz
+              mc cp $REDIS_DUMP_FILE myminio/wf-dev-db-backups/hourly/$DUMP_LATEST_FILE
+              echo "$REDIS_DUMP_FILE found OK and copied to minio bucket."
+              echo "Backup frequency is $BACKUP_FREQUENCY"
+              mc cp $REDIS_DUMP_FILE myminio/wf-dev-db-backups/$BACKUP_FREQUENCY/$DUMP_BACKUP_FILE
+
+      else
+      echo "$REDIS_DUMP_FILE not found backup failed."
+      fi
