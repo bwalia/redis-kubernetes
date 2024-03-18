@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Values.service.name }}
+  namespace: {{ .Release.Namespace }}
   annotations:
     service.beta.kubernetes.io/service-name: {{ include "redis-cluster-ha.fullname" . }}
   labels:
@@ -14,5 +15,3 @@ spec:
     - protocol: TCP
       port: {{ .Values.service.port }}
       targetPort: 6379
-  selector:
-    {{- include "redis-cluster-ha.selectorLabels" . | nindent 4 }}
