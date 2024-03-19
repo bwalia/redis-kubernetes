@@ -2,8 +2,8 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: wf-dev-db-backup-hourly
-  namespace: dev
+  name: wf-{{ .Values.namespace }}-db-backup-hourly
+  namespace: {{ .Values.namespace }}
 spec:
   schedule: "0 * * * *"
   #testing 1 min "0 */1 * * *"
@@ -14,7 +14,7 @@ spec:
         spec:
           restartPolicy: Never
           containers:
-          - name: "wf-db-backup-dev-hourly"
+          - name: "wf-db-backup-{{ .Values.namespace }}-hourly"
             image: bwalia/redis:latest
             imagePullPolicy: Always
             command:
@@ -26,7 +26,7 @@ spec:
               # sleep infinity
             env:
               - name: DB_BACKUP_JOB_NAME
-                value: wf-dev-db-backup-hourly
+                value: wf-{{ .Values.namespace }}-db-backup-hourly
               - name: BACKUP_FREQUENCY
                 value: hourly
             envFrom:
@@ -35,7 +35,7 @@ spec:
             volumeMounts:
               - name: redis-data-vol
                 mountPath: /redis-dump
-              - name: wf-env-vol-dev
+              - name: wf-env-vol-{{ .Values.namespace }}
                 mountPath: "/tmp/secrets"
                 readOnly: false
               - name: redis-bootstrap-cm-vol
@@ -44,25 +44,25 @@ spec:
           volumes:
             - name: redis-data-vol
               persistentVolumeClaim:
-                claimName: redis-pvc
-            - name: wf-env-vol-dev
+                claimName: redis-{{ .Values.namespace }}-pvc
+            - name: wf-env-vol-{{ .Values.namespace }}
               secret:
-                secretName: wf-api-secret-dev
+                secretName: wf-api-secret-{{ .Values.namespace }}
                 items:
                 - key: env_file
                   path: .env
                 optional: false
             - name: redis-bootstrap-cm-vol
               configMap:
-                name: redis-bootstrap-cm-dev
+                name: redis-bootstrap-cm-{{ .Values.namespace }}
       backoffLimit: 0
 ---
 # Source: wsl/templates/cronjob.yaml
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: wf-dev-db-backup-daily
-  namespace: dev
+  name: wf-{{ .Values.namespace }}-db-backup-daily
+  namespace: {{ .Values.namespace }}
 spec:
   schedule: "0 4 * * *"
   #testing 1 min "0 */1 * * *"
@@ -73,7 +73,7 @@ spec:
         spec:
           restartPolicy: Never
           containers:
-          - name: wf-db-backup-dev-daily
+          - name: wf-db-backup-{{ .Values.namespace }}-daily
             image: bwalia/redis:latest
             imagePullPolicy: Always
             command:
@@ -86,7 +86,7 @@ spec:
               # sleep infinity
             env:
               - name: DB_BACKUP_JOB_NAME
-                value: wf-dev-db-backup-daily
+                value: wf-{{ .Values.namespace }}-db-backup-daily
               - name: BACKUP_FREQUENCY
                 value: daily
             envFrom:
@@ -95,7 +95,7 @@ spec:
             volumeMounts:
               - name: redis-data-vol
                 mountPath: /redis-dump
-              - name: wf-env-vol-dev
+              - name: wf-env-vol-{{ .Values.namespace }}
                 mountPath: "/tmp/secrets"
                 readOnly: false
               - name: redis-bootstrap-cm-vol
@@ -104,15 +104,15 @@ spec:
           volumes:
             - name: redis-data-vol
               persistentVolumeClaim:
-                claimName: redis-pvc
-            - name: wf-env-vol-dev
+                claimName: redis-{{ .Values.namespace }}-pvc
+            - name: wf-env-vol-{{ .Values.namespace }}
               secret:
-                secretName: wf-api-secret-dev
+                secretName: wf-api-secret-{{ .Values.namespace }}
                 items:
                 - key: env_file
                   path: .env
                 optional: false
             - name: redis-bootstrap-cm-vol
               configMap:
-                name: redis-bootstrap-cm-dev
+                name: redis-bootstrap-cm-{{ .Values.namespace }}
       backoffLimit: 0

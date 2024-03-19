@@ -9,7 +9,7 @@ metadata:
     {{- include "redis-cluster-ha.labels" . | nindent 4 }}
 spec:
   selector:
-    app: redis-sts
+    app: redis-{{ .Values.namespace }}-sts
   type: {{ .Values.service.type }}
   ports:
     - protocol: TCP

@@ -67,13 +67,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: redis-sts
+      app: redis-{{ .Values.namespace }}-sts
   updateStrategy:
     type: RollingUpdate
   template:
     metadata:
       labels:
-        app: redis-sts
+        app: redis-{{ .Values.namespace }}-sts
     spec:
       volumes:
         - name: redis-data-vol
@@ -149,7 +149,7 @@ metadata:
   namespace: dev
 spec:
   selector:
-    app: redis-sts
+    app: redis-{{ .Values.namespace }}-sts
   ports:
     - protocol: TCP
       port: 6379

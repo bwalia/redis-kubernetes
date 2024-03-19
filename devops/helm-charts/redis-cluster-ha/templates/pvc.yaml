@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   labels:
-    app: redis-sts
+    app: redis-{{ .Values.namespace }}-sts
   name: redis-{{ .Values.namespace }}-pvc
 spec:
   accessModes:
