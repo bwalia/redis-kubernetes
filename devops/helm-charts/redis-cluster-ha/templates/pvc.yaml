@@ -10,7 +10,7 @@ spec:
   resources:
     requests:
       storage: 2Gi
-  hostPath:
-    path: "/redis-cluster/data/{{ .Values.namespace }}"
-  persistentVolumeReclaimPolicy: Retain
+  # hostPath:
+  #   path: "/redis-cluster/data/{{ .Values.namespace }}"
+  # persistentVolumeReclaimPolicy: Retain
   storageClassName: local-path

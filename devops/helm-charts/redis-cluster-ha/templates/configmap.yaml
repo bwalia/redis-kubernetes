@@ -16,8 +16,11 @@ data:
       if [ -z "$REDIS_CLI_BIN" ]; then
             echo "redis-cli not found but we will continue with the backup without flushing the redis data"
       else
-            echo save | $REDIS_CLI_BIN
+            echo BGSAVE | $REDIS_CLI_BIN -h redis-service.dev.svc.cluster.local
       fi
+
+      sleep 60
+      echo "Copying redis dump to minio"
       # mc --version
       source /tmp/secrets/.env
       TAR_UTIL_BIN=$(which tar)
