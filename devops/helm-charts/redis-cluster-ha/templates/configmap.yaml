@@ -16,7 +16,7 @@ data:
       if [ -z "$REDIS_CLI_BIN" ]; then
             echo "redis-cli not found but we will continue with the backup without flushing the redis data"
       else
-            echo BGSAVE | $REDIS_CLI_BIN -h redis-service.dev.svc.cluster.local
+            echo BGSAVE | $REDIS_CLI_BIN -h redis-service.{{ .Values.namespace }}.svc.cluster.local
       fi
 
       sleep 60
